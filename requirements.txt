@@ -1,0 +1,3 @@
+duckdb
+defopt
+requests
