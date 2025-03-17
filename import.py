@@ -14,7 +14,7 @@ SELECT
     IF(player{me}_info.battle_input_type = 0, 'C', 'M') AS my_control,
     IF(player{op}_info.battle_input_type = 0, 'C', 'M') AS op_control,
     player{op}_info.player.fighter_id AS op_fighter_id,
-    player{op}_info.player.short_id AS op_sid,
+    player{op}_info.player.short_id AS op_sid,    
     player{me}_info.master_rating AS my_mr,
     player{op}_info.master_rating AS op_mr,
     player{me}_info.master_rating_ranking AS my_mr_rank,
@@ -25,10 +25,12 @@ SELECT
     player{op}_info.league_rank AS op_rank,
     player{me}_info.master_league AS my_master_league,
     player{op}_info.master_league AS op_master_league,
-    list_transform(player1_info.round_results, x -> if(x=0, 'LOSS', 'WIN')) AS round_results,
+    list_transform(player{me}_info.round_results, x -> if(x=0, 'LOSS', 'WIN')) AS round_results,
+    -- Count the number of losses (0s) to determine if this was a win or not
+    list_sum([not x for x in cast(player1_info.round_results as boolean[])])=2 as win,
     replay_battle_type_name AS battle_type,
     battle_version,
-    uploaded_at
+    to_timestamp(uploaded_at) as uploaded_at
 from json_import
 where player{me}_info.player.short_id = $1
 """
@@ -38,46 +40,57 @@ TRANSFORM_QUERY = (
 )
 
 
-def main(import_file: str, config_file: str):
+def load_replays(conn: duckdb.DuckDBPyConnection, import_file: str, sid: int):
+    conn.sql(
+        f"""--sql
+        CREATE TEMPORARY TABLE json_import AS 
+            SELECT * FROM '{import_file}';
+        """
+    )
+    try:
+        # Just create the table directly from the query the first time the script is run
+        conn.execute(
+            f"""--sql
+            CREATE TABLE replays AS 
+                SELECT * FROM (
+                    {TRANSFORM_QUERY}
+                );
+            """,
+            [sid],
+        )
+    except duckdb.CatalogException:
+        conn.execute(
+            f"""--sql
+            INSERT INTO replays BY NAME
+                SELECT * 
+                FROM (
+                    {TRANSFORM_QUERY}
+                )
+                WHERE replay_id NOT IN (
+                    SELECT DISTINCT replay_id
+                    FROM replays
+                );
+            """,
+            [sid],
+        )
+    conn.sql(
+        """--sql
+        DROP TABLE json_import;
+        """
+    )
+    print(f"Loaded {import_file}")
+
+
+def main(config_file: str, *import_files: str):
     with open(config_file) as f:
         args = json.loads(f.read())
-        sid = args["PLAYER_SID"]
+        sid = int(args["PLAYER_SID"])
 
     root_dir = str(Path(__file__).parent)
     db_file = os.path.join(root_dir, "data", "sf.duckdb")
     with duckdb.connect(db_file) as conn:
-        conn.sql(
-            f"""--sql
-            CREATE TEMPORARY TABLE json_import AS 
-                SELECT * FROM '{import_file}';
-            """
-        )
-        try:
-            # Just create the table directly from the query the first time the script is run
-            conn.execute(
-                f"""--sql
-                CREATE TABLE replays AS 
-                    SELECT * FROM (
-                        {TRANSFORM_QUERY}
-                    );
-                """,
-                [sid],
-            )
-        except duckdb.CatalogException:
-            conn.execute(
-                f"""--sql
-                INSERT INTO replays BY NAME
-                    SELECT * 
-                    FROM (
-                        {TRANSFORM_QUERY}
-                    )
-                    WHERE replay_id NOT IN (
-                        SELECT DISTINCT replay_id
-                        FROM replays
-                    );
-                """,
-                [sid],
-            )
+        for import_file in import_files:
+            load_replays(conn, import_file, sid)
 
 
 if __name__ == "__main__":
