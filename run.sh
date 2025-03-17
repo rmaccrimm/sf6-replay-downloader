@@ -1,0 +1,1 @@
+python -u download.py args.json | xargs python import.py args.json
