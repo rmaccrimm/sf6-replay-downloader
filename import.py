@@ -1,9 +1,12 @@
 import json
+import os
+from pathlib import Path
 
 import defopt
-import duckdb as db
+import duckdb
 
-TRANSFORM_QUERY = """--sql
+# Full query unions rows where your are player 1 with those where you're player 2
+_QUERY_PART = """--sql
 SELECT  
     replay_id,
     player{me}_info.playing_character_name AS my_char,
@@ -26,9 +29,13 @@ SELECT
     replay_battle_type_name AS battle_type,
     battle_version,
     uploaded_at
-from imported
-where player{me}_info.player.short_id = {player_sid}
+from json_import
+where player{me}_info.player.short_id = $1
 """
+
+TRANSFORM_QUERY = (
+    f"{_QUERY_PART.format(me=1, op=2)} UNION {_QUERY_PART.format(me=2, op=1)}"
+)
 
 
 def main(import_file: str, config_file: str):
@@ -36,17 +43,41 @@ def main(import_file: str, config_file: str):
         args = json.loads(f.read())
         sid = args["PLAYER_SID"]
 
-    db.sql(
-        f"""--sql
-    create table imported as select * from '{import_file}';
-    """
-    )
-    print(
-        db.sql(
-            f"{TRANSFORM_QUERY.format(me=1, op=2, player_sid=sid)} UNION "
-            f"{TRANSFORM_QUERY.format(me=2, op=1, player_sid=sid)};"
+    root_dir = str(Path(__file__).parent)
+    db_file = os.path.join(root_dir, "data", "sf.duckdb")
+    with duckdb.connect(db_file) as conn:
+        conn.sql(
+            f"""--sql
+            CREATE TEMPORARY TABLE json_import AS 
+                SELECT * FROM '{import_file}';
+            """
         )
-    )
+        try:
+            # Just create the table directly from the query the first time the script is run
+            conn.execute(
+                f"""--sql
+                CREATE TABLE replays AS 
+                    SELECT * FROM (
+                        {TRANSFORM_QUERY}
+                    );
+                """,
+                [sid],
+            )
+        except duckdb.CatalogException:
+            conn.execute(
+                f"""--sql
+                INSERT INTO replays BY NAME
+                    SELECT * 
+                    FROM (
+                        {TRANSFORM_QUERY}
+                    )
+                    WHERE replay_id NOT IN (
+                        SELECT DISTINCT replay_id
+                        FROM replays
+                    );
+                """,
+                [sid],
+            )
 
 
 if __name__ == "__main__":
