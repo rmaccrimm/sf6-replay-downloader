@@ -48,7 +48,7 @@ def main(conf_file: str):
     dt = datetime.now()
     fname = os.path.join(str(data_dir), f"replays_{int(dt.timestamp())}.json")
     with open(fname, "w+") as f:
-        f.write(json.dumps({"replay_list": replays}))
+        f.write(json.dumps(replays))
 
     print(fname)
 
