@@ -11,11 +11,11 @@ def main(conf_file: str):
     with open(conf_file) as f:
         args = json.loads(f.read())
 
-        PLAYER_SID = args["PLAYER_SID"]
-        COOKIE = args["COOKIE"]
+        player_sid = args["PLAYER_SID"]
+        cookie = args["COOKIE"]
+        data_dir = args["DATA_DIR"]
 
-    curr_file = Path(__file__)
-    data_dir = Path(os.path.join(str(curr_file.parent), "data", "json"))
+    data_dir = Path(os.path.join(data_dir, "json"))
     data_dir.mkdir(parents=True, exist_ok=True)
 
     headers = {
@@ -29,8 +29,8 @@ def main(conf_file: str):
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, "
             "like Gecko) Version/18.3 Safari/605.1.15"
         ),
-        "Referer": f"https://www.streetfighter.com/6/buckler/profile/{PLAYER_SID}",
-        "Cookie": COOKIE,
+        "Referer": f"https://www.streetfighter.com/6/buckler/profile/{player_sid}",
+        "Cookie": cookie,
         "Priority": "u=3, i",
         "x-nextjs-data": "1",
     }
@@ -39,7 +39,7 @@ def main(conf_file: str):
     for page in range(1, 11):
         url = (
             "https://www.streetfighter.com/6/buckler/_next/data/yDWIiI2UnQLmZkd4ZwzOV/en/profile/"
-            f"{PLAYER_SID}/battlelog.json?page={page}&sid={PLAYER_SID}"
+            f"{player_sid}/battlelog.json?page={page}&sid={player_sid}"
         )
         r = requests.get(url, headers=headers).json()
         for d in r["pageProps"]["replay_list"]:

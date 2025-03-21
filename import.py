@@ -85,9 +85,9 @@ def main(config_file: str, *import_files: str):
     with open(config_file) as f:
         args = json.loads(f.read())
         sid = int(args["PLAYER_SID"])
+        data_dir = args["DATA_DIR"]
 
-    root_dir = str(Path(__file__).parent)
-    db_file = os.path.join(root_dir, "data", "sf.duckdb")
+    db_file = os.path.join(data_dir, "sf.duckdb")
     with duckdb.connect(db_file) as conn:
         for import_file in import_files:
             load_replays(conn, import_file, sid)
