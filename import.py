@@ -27,7 +27,7 @@ SELECT
     player{op}_info.master_league AS op_master_league,
     list_transform(player{me}_info.round_results, x -> if(x=0, 'LOSS', 'WIN')) AS round_results,
     -- Count the number of losses (0s) to determine if this was a win or not
-    list_sum([not x for x in cast(player{me}_info.round_results as boolean[])])=2 as win,
+    list_sum([not x for x in cast(player{me}_info.round_results as boolean[])])!=2 as win,
     replay_battle_type_name AS battle_type,
     battle_version,
     to_timestamp(uploaded_at) as uploaded_at
